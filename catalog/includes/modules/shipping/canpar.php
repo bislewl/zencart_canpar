@@ -1,7 +1,8 @@
 <?php
-
 /*
   canpar.php,v 0.1 2006/07/22 10:52:11 hpdl Exp $
+
+  Released under the GNU General Public License
 
   ORIGINAL CANPAR SCRIPT
   Copyright (c) 2006 J. B. Wallace (jbwallace@shaw.ca) 2006.7.22
@@ -13,9 +14,22 @@
   MODIFICATION TO WORK WITH ZEN CART
   Copyright (c) 2007 Steve Oliveira (oliveira.steve@gmail.com) 7/24/2007
 
-	MODIFICATION TO WORK WITH ZEN CART 1.5.0 and work with markup, fuel surcharge and box quantity count.
+  MODIFICATION TO WORK WITH ZEN CART 1.5.0 and work with markup, fuel surcharge and box quantity count.
 
-  Released under the GNU General Public License
+ Last updated by: bislewl - 6/13/2016 (v1.5.1)
+- Added ability to select the services you wanted to offer versus just Ground and USA
+- Added ability to return custom quotes
+- Fixed Markup Bug
+- Improved markup to allow % or set $ amount.
+- Fixed issue where was allowing customer to checkout with Shipping total of $0.00 with bad address
+- Fixed Tax Calculation issues
+- Fixed Zone Issues
+- Added pickup tag option
+- Added Ability to select weight unit
+
+
+
+
 */
 
 class canpar
@@ -145,7 +159,7 @@ class canpar
     function calc_markup($shipping_cost)
     {
         $mark_up = 0;
-        if($shipping_cost == 0){
+        if ($shipping_cost == 0) {
             return $mark_up;
         }
         if (strpos(MODULE_SHIPPING_CANPAR_MARK_UP, '%') !== false) {
@@ -276,8 +290,6 @@ class canpar
 
     function keys()
     {
-
-
         $keys[] = 'MODULE_SHIPPING_CANPAR_STATUS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_TAX_CLASS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_MARK_UP';
@@ -291,7 +303,6 @@ class canpar
         $keys[] = 'MODULE_SHIPPING_CANPAR_ZONE';
         $keys[] = 'MODULE_SHIPPING_CANPAR_TAX_BASIS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_SERVICE_TYPES';
-
         return $keys;
 
     }
