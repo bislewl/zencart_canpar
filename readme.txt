@@ -1,7 +1,7 @@
-CanPar Shipping XML
+CanPar Shipping XML:
 https://www.zen-cart.com/downloads.php?do=file&id=451
 
-License
+License:
 This contribution is distributed under the terms of the Gnu General Public License (GPL) Version 2. A copy of this license can be found in LICENSE.txt as part of this contribution.
 
 
@@ -17,8 +17,6 @@ Last updated by: bislewl - 6/13/2016 (v1.5.1)
 - Added pickup tag option
 - Added Ability to select weight unit
 
-
-
 To install:
 
 1.) BACKUP BACKUP BACKUP
@@ -26,4 +24,4 @@ To install:
 3.) Copy folders preserving your directory structure.
 4.) In your admin side click Modules -> Shipping, select CanPar, click install
 5.) Configure settings as you wish.
-5.) If you aren't using the customer rate (you need shipper number and token) Change your fuel surcharge to reflect current amount, as it changes.
+6.) If you aren't using the customer rate (you need shipper number and token) Change your fuel surcharge to reflect current amount, as it changes.
