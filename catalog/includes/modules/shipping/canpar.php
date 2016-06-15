@@ -14,9 +14,14 @@
   MODIFICATION TO WORK WITH ZEN CART
   Copyright (c) 2007 Steve Oliveira (oliveira.steve@gmail.com) 7/24/2007
 
-  MODIFICATION TO WORK WITH ZEN CART 1.5.0 and work with markup, fuel surcharge and box quantity count.
+  MODIFICATION TO WORK WITH ZEN CART 1.5.4 and work with markup, fuel surcharge and box quantity count.
 
- Last updated by: bislewl - 6/13/2016 (v1.5.1)
+Updated by: bislewl - 6/15/2016 (v1.5.2)
+- Added debug display
+- Fixed zero weight issue. (minimum 0.1 weight now)
+
+
+Updated by: bislewl - 6/13/2016 (v1.5.1)
 - Added ability to select the services you wanted to offer versus just Ground and USA
 - Added ability to return custom quotes
 - Fixed Markup Bug
@@ -26,9 +31,6 @@
 - Fixed Zone Issues
 - Added pickup tag option
 - Added Ability to select weight unit
-
-
-
 
 */
 
@@ -52,6 +54,7 @@ class canpar
         $this->weight_unit = substr(MODULE_SHIPPING_CANPAR_WEIGHT_UNIT, 1);
         $this->pick_up_tag = MODULE_SHIPPING_CANPAR_PICKUP_TAG;
         $this->rate_type = MODULE_SHIPPING_CANPAR_RATE_TYPE;
+        $this->debug_display = ((MODULE_SHIPPING_CANPAR_DEBUG_DISPLAY == 'True') ? true : false);
 
         if (($this->enabled == true) && ((int)MODULE_SHIPPING_CANPAR_ZONE > 0)) {
             $check_flag = false;
@@ -179,7 +182,9 @@ class canpar
     function get_quote($service_type = '1')
     {
         global $order, $shipping_weight, $shipping_num_boxes, $db;
-
+        if ($shipping_weight < 0.1) {
+            $shipping_weight = 0.1;
+        }
         $srcFSA = substr(strtoupper(SHIPPING_ORIGIN_ZIP), 0, 7);
         $desFSA = substr(strtoupper($order->delivery['postcode']), 0, 7);
         $srcFSA = str_replace(" ", "", $srcFSA);
@@ -190,7 +195,7 @@ class canpar
         if ($this->rate_type == 'Custom Rate') {
             // An example of a URL with shipment data, for account number 99999999 with a token of CANPAR is:
             // https://www.canpar.com/XML/RatingXML.jsp?shipment=<shipment weight_system="IMPERIAL" shipper_number="99999999" destination_postal_code="M1M1M1" service_type="1"><total total_pieces="2" total_weight="20"/></shipment>&token=CANPAR
-            $url_request = 'https://www.canpar.com/XML/RatingXML.jsp?shipment=<shipment weight_system="IMPERIAL" shipper_number="' . MODULE_SHIPPING_CANPAR_ACCOUNT_NUMBER . '" destination_postal_code="' . $desFSA . '" service_type="' . $service_type . '"><total total_pieces="' . $total_count . '" total_weight="' . $this->weight_unit . '"/></shipment>&token=' . MODULE_SHIPPING_CANPAR_ACCESS_TOKEN;
+            $url_request = 'https://www.canpar.com/XML/RatingXML.jsp?shipment=<shipment weight_system="IMPERIAL" shipper_number="' . MODULE_SHIPPING_CANPAR_ACCOUNT_NUMBER . '" destination_postal_code="' . $desFSA . '" service_type="' . $service_type . '"><total total_pieces="' . $total_count . '" total_weight="' . (float)$this->weight_unit . '"/></shipment>&token=' . MODULE_SHIPPING_CANPAR_ACCESS_TOKEN;
             $body = file_get_contents($url_request);
             if ($body == 'Access denied') {
                 $db->Execute("UPDATE " . TABLE_CONFIGURATION . " SET configuration_value = 'Base Rate' WHERE configuration_key = 'MODULE_SHIPPING_CANPAR_RATE_TYPE'");
@@ -210,7 +215,7 @@ class canpar
                 'origin=' . $srcFSA,
                 'dest=' . $desFSA,
                 'cod=0',
-                'weight=' . intval($shipping_weight),
+                'weight=' . (float)$shipping_weight,
                 'put=' . $this->pick_up_tag,
                 'xc=0',
                 'dec=0'));
@@ -229,6 +234,9 @@ class canpar
                 $FuelSurcharge = 0;
             }
             $shipping_cost = $shipping_cost + $FuelSurcharge + $mark_up;
+        }
+        if ($this->debug_display == 'True') {
+            echo $url_request . "\n";
         }
         return $shipping_cost;
     }
@@ -280,6 +288,7 @@ class canpar
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, use_function, set_function, date_added) VALUES ('Tax Class', 'MODULE_SHIPPING_CANPAR_TAX_CLASS', '0', 'Use the following tax class on the shipping fee.', '6', '11', 'zen_get_tax_class_title', 'zen_cfg_pull_down_tax_classes(', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Tax Basis', 'MODULE_SHIPPING_CANPAR_TAX_BASIS', 'Shipping', 'On what basis is Shipping Tax calculated. Options are<br />Shipping - Based on customers Shipping Address<br />Billing Based on customers Billing address<br />Store - Based on Store address if Billing/Shipping Zone equals Store zone', '6', '12', 'zen_cfg_select_option(array(\'Shipping\', \'Billing\', \'Store\'), ', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Sort Order', 'MODULE_SHIPPING_CANPAR_SORT_ORDER', '0', 'Sort order of display.', '6', '13', now())");
+        $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Enable CANPAR Shipping Debug', 'MODULE_SHIPPING_CANPAR_DEBUG_DISPLAY', 'False', 'Do you want the module to display the URLs it\'s requesting??', '6', '15', 'zen_cfg_select_option(array(\'True\', \'False\'), ', now())");
     }
 
     function remove()
@@ -290,6 +299,8 @@ class canpar
 
     function keys()
     {
+
+
         $keys[] = 'MODULE_SHIPPING_CANPAR_STATUS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_TAX_CLASS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_MARK_UP';
@@ -303,6 +314,8 @@ class canpar
         $keys[] = 'MODULE_SHIPPING_CANPAR_ZONE';
         $keys[] = 'MODULE_SHIPPING_CANPAR_TAX_BASIS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_SERVICE_TYPES';
+        $keys[] = 'MODULE_SHIPPING_CANPAR_DEBUG_DISPLAY';
+
         return $keys;
 
     }

@@ -2,3 +2,6 @@
 /.idea/
 /additional_docs/
 .gitignore
+/additional_resources/
+additional_resources/
+/.gitignore
