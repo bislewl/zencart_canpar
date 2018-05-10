@@ -6,6 +6,8 @@ This contribution is distributed under the terms of the Gnu General Public Licen
 
 
 Original Author: coeus
+Last updated by: bislewl - 05/09/2018 (v1.5.2)
+- Various Bug fixes
 Last updated by: bislewl - 6/13/2016 (v1.5.1)
 - Added ability to select the services you wanted to offer versus just Ground and USA
 - Added ability to return custom quotes

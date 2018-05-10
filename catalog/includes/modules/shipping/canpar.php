@@ -1,4 +1,5 @@
 <?php
+
 /*
   canpar.php,v 0.1 2006/07/22 10:52:11 hpdl Exp $
 
@@ -76,7 +77,6 @@ class canpar
         }
 
         $offered_service_types = explode(',', MODULE_SHIPPING_CANPAR_SERVICE_TYPES);
-//        echo var_dump($offered_service_types);
         $this->service_types = array();
         foreach ($offered_service_types as $service_type) {
             $service_type_id = substr(ltrim($service_type, ' '), 0, 1);
@@ -131,8 +131,8 @@ class canpar
         $methods = array();
         if (count($this->service_types) > 0) {
             foreach ($this->service_types as $service_type) {
-                $returned_quote = $this->get_quote($service_type['id']);
-                if ($returned_quote > 0) {
+                $returned_quote = number_format($this->get_quote($service_type['id']), 2);
+                if ($returned_quote != '0.00') {
                     $methods[] = array('cost' => $returned_quote,
                         'id' => $service_type['id'],
                         'title' => $service_type['title']);
@@ -140,13 +140,12 @@ class canpar
             }
         }
 
-        if (isset($methods) && count($methods) > 1) {
+        if (count($methods) != 0) {
             sort($methods);
             $this->quotes = array('id' => $this->code,
                 'module' => MODULE_SHIPPING_CANPAR_TEXT_TITLE,
                 'info' => $this->info());
             $this->quotes['methods'] = $methods;
-
             if ($this->tax_class > 0) {
                 $this->quotes['tax'] = zen_get_tax_rate($this->tax_class, $order->delivery['country']['id'], $order->delivery['zone_id']);
             }
@@ -175,7 +174,6 @@ class canpar
                 $mark_up = MODULE_SHIPPING_CANPAR_MARK_UP;
             }
         }
-//        echo '('.$shipping_cost.'|'.$mark_up.')  ';
         return $mark_up;
     }
 
@@ -192,21 +190,34 @@ class canpar
         $total_count = $_SESSION['cart']->count_contents();
 
         //Connect to CanPar here to get quote, and parse XML.
-        if ($this->rate_type == 'Custom Rate') {
+        if ($this->rate_type == 'Customer Rate') {
             // An example of a URL with shipment data, for account number 99999999 with a token of CANPAR is:
             // https://www.canpar.com/XML/RatingXML.jsp?shipment=<shipment weight_system="IMPERIAL" shipper_number="99999999" destination_postal_code="M1M1M1" service_type="1"><total total_pieces="2" total_weight="20"/></shipment>&token=CANPAR
-            $url_request = 'https://www.canpar.com/XML/RatingXML.jsp?shipment=<shipment weight_system="IMPERIAL" shipper_number="' . MODULE_SHIPPING_CANPAR_ACCOUNT_NUMBER . '" destination_postal_code="' . $desFSA . '" service_type="' . $service_type . '"><total total_pieces="' . $total_count . '" total_weight="' . (float)$this->weight_unit . '"/></shipment>&token=' . MODULE_SHIPPING_CANPAR_ACCESS_TOKEN;
-            $body = file_get_contents($url_request);
+            $url_request = 'https://www.canpar.com/XML/RatingXML.jsp?token=' . MODULE_SHIPPING_CANPAR_ACCESS_TOKEN;
+            $get_xml = '<shipment weight_system="IMPERIAL" shipper_number="' . MODULE_SHIPPING_CANPAR_ACCOUNT_NUMBER . '" destination_postal_code="' . $desFSA . '" service_type="' . $service_type . '"><total total_pieces="' . $total_count . '" total_weight="' . $shipping_weight . '"/></shipment>';
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url_request);
+// Following line is compulsary to add as it is:
+            curl_setopt($ch, CURLOPT_POSTFIELDS,
+                "shipment=" . $get_xml);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 300);
+            $body = curl_exec($ch);
+            curl_close($ch);
             if ($body == 'Access denied') {
                 $db->Execute("UPDATE " . TABLE_CONFIGURATION . " SET configuration_value = 'Base Rate' WHERE configuration_key = 'MODULE_SHIPPING_CANPAR_RATE_TYPE'");
+            } else {
+                try {
+                    $xml = new SimpleXMLElement($body);
+                } catch (Exception $e) {
+//                    echo $e;
+                }
+                $json = json_encode($xml);
+                $rating_array = json_decode($json, TRUE);
+                $shipping_cost = number_format($rating_array['rate']["@attributes"]['total_charge'], 2);
+                $mark_up = $this->calc_markup($shipping_cost);
+                $shipping_cost = $shipping_cost + $mark_up;
             }
-            $xml = new SimpleXMLElement($body);
-            $json = json_encode($xml);
-            $rating_array = json_decode($json, TRUE);
-            $shipping_cost = $rating_array['rate']["@attributes"]['total_charge'];
-
-            $mark_up = $this->calc_markup($shipping_cost);
-            $shipping_cost = $shipping_cost + $mark_up;
 
         } else {
             $request = join('&', array('service=' . $service_type,
@@ -275,9 +286,10 @@ class canpar
             $services_offered_string .= "\'" . $service_type . "\', ";
         }
         trim($services_offered_string, ',');
+        $fuel_surcharge = $this->get_fuel_surcharge();
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Enable CANPAR Shipping', 'MODULE_SHIPPING_CANPAR_STATUS', 'True', 'Do you want to offer CANPAR rate shipping?', '6', '1', 'zen_cfg_select_option(array(\'True\', \'False\'), ', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Mark Up', 'MODULE_SHIPPING_CANPAR_MARK_UP', '0%', 'Use the following mark-up on the shipping list fees. <br/> end with % for a percentage or without for a certain amount', '6', '2', now())");
-        $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Fuel Surcharge Rate', 'MODULE_SHIPPING_CANPAR_FUEL_SURCHARGE', '16.8', 'KEEP UP TO DATE: Fuel Surcharge Rate Enter as a percentage without the % sign (eg. 16.8). <br/>Only Applied on base rate. Custom Rate included the Fuel Surcharge', '6', '3', now())");
+        $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Fuel Surcharge Rate', 'MODULE_SHIPPING_CANPAR_FUEL_SURCHARGE', '" . $fuel_surcharge . "', 'KEEP UP TO DATE: Fuel Surcharge Rate Enter as a percentage without the % sign (eg. 16.8). <br/>Only Applied on base rate. Custom Rate included the Fuel Surcharge<br/><a href=\"https://www.canpar.ca/en/ship/fuel_surcharge.jsp\">CanPar Fuel Surcharge Table</a><br/><a href=\"http://charting.kentgroupltd.com/\">Average Week Diesel Price</a>', '6', '3', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Weight Units', 'MODULE_SHIPPING_CANPAR_WEIGHT_UNIT', 'LBS', 'Weight Units:', '6', '4', 'zen_cfg_select_option(array(\'LBS\', \'KGS\'), ', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) values ('Pickup Tag', 'MODULE_SHIPPING_CANPAR_PICKUP_TAG', '0', 'Pickup Tag Type:<br/><b>1</b> - Pickup Tag Shipment</br> <b>0</b> - Not a Pickup Tag Shipment<br/>', '6', '5', 'zen_cfg_select_option(array(\'1\',\'0\'),', now())");
         $db->Execute("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) values ('Services Offered', 'MODULE_SHIPPING_CANPAR_SERVICE_TYPES', '', 'Services Selected', '6', '6', 'zen_cfg_select_multioption(array(" . $services_offered_string . "),', now())");
@@ -299,8 +311,6 @@ class canpar
 
     function keys()
     {
-
-
         $keys[] = 'MODULE_SHIPPING_CANPAR_STATUS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_TAX_CLASS';
         $keys[] = 'MODULE_SHIPPING_CANPAR_MARK_UP';
@@ -319,5 +329,43 @@ class canpar
         return $keys;
 
     }
-}
 
+    function get_current_diesel_rate()
+    {
+        $url_request = 'http://charting.kentgroupltd.com/Charting/HomeInitialLoad';
+        $json = file_get_contents($url_request);
+        $array = json_decode($json, 1);
+        $return = $array['diesWeekDiff'];
+        if ($this->debug_display == 'True') {
+            echo $url_request . "\n";
+        }
+        echo 'diesel price returned';
+        return $return;
+    }
+
+    function get_fuel_surcharge()
+    {
+        $fuel_rate = (float)$this->get_current_diesel_rate();
+        $fuel_surcharge = '16.8';
+        $this->debug_display = ((MODULE_SHIPPING_CANPAR_DEBUG_DISPLAY == 'True') ? true : false);
+        $fuel_surcharge = (($fuel_rate > 0.81) ? 5.8 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.84) ? 6.55 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.87) ? 7.3 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.90) ? 8.05 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.93) ? 8.8 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.96) ? 9.55 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 0.99) ? 10.3 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.02) ? 11.05 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.05) ? 11.8 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.08) ? 12.55 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.11) ? 13.3 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.14) ? 14.05 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.17) ? 14.80 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.20) ? 15.55 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.23) ? 16.3 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.26) ? 17.05 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.29) ? 17.8 : $fuel_surcharge);
+        $fuel_surcharge = (($fuel_rate > 1.30) ? 18.55 : $fuel_surcharge);
+        return $fuel_surcharge;
+    }
+}
